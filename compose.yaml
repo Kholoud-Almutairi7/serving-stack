@@ -1,0 +1,21 @@
+services:
+  serving:
+    image: ${IMAGE}
+    ports:
+      - "${HOST_PORT}:8000"
+    environment:
+      MODEL_ID: ${MODEL_ID}
+      API_KEY: ${API_KEY}
+      MAX_TOKENS: ${MAX_TOKENS}
+    volumes:
+      - hf-cache:/home/app/.cache/huggingface
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  hf-cache:
