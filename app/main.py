@@ -8,7 +8,7 @@ import time
 import uuid
 
 import torch
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -24,6 +24,12 @@ from schemas import (
 )
 
 MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen2.5-0.5B-Instruct")
+
+API_KEY = os.environ.get("API_KEY", "")
+MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "256"))
+
+if not API_KEY:
+    print("WARNING: API_KEY is not set; /v1 is open")
 
 app = FastAPI(title="serving-stack", version="wk2")
 
@@ -57,8 +63,13 @@ def health() -> HealthResponse:
 # GET /v1/models
 # ---------------------------------------------------------------------------
 @app.get("/v1/models", response_model=ModelList)
-def list_models() -> ModelList:
+def list_models(authorization: str | None = Header(default=None)) -> ModelList:
     """List the served model id(s)."""
+    if API_KEY:
+        expected = f"Bearer {API_KEY}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
     return ModelList(
         data=[
             ModelCard(
@@ -73,7 +84,18 @@ def list_models() -> ModelList:
 # POST /v1/chat/completions
 # ---------------------------------------------------------------------------
 @app.post("/v1/chat/completions", response_model=None)
-def chat_completions(req: ChatCompletionRequest):
+def chat_completions(
+    req: ChatCompletionRequest,
+    authorization: str | None = Header(default=None),
+):
+    if API_KEY:
+        expected = f"Bearer {API_KEY}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if req.max_tokens > MAX_TOKENS:
+        req.max_tokens = MAX_TOKENS
+
 
     input_ids = tokenizer.apply_chat_template(
         [m.model_dump() for m in req.messages],
